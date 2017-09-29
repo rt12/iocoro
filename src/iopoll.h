@@ -1,3 +1,5 @@
+#pragma once
+
 #include "iocommon.h"
 #include <stdint.h>
 
