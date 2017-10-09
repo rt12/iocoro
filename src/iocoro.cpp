@@ -14,15 +14,38 @@ thread_local Context* tls_currentContext = nullptr;
 // class ContextPoll
 //////////////////////////////////////////////////////////////////////////
 
-ContextPoll::ContextPoll(Poller& p, int f)
-: FilePoll(f), poller(p)  
+ContextPoll::ContextPoll(int f)
+: FilePoll(f)
 {
-    poller.add(this);
+    add(f);
+}
+
+ContextPoll::ContextPoll(ContextPoll&& ctx)
+: FilePoll(ctx.fd)
+{
+    *this = std::move(ctx);
 }
 
 ContextPoll::~ContextPoll()
 {
-    poller.remove(this);
+    remove();
+}
+
+void ContextPoll::add(int f)
+{
+    remove();
+    fd = f;
+
+    if (fd != -1)
+        getCurrentPoller().add(this);
+}
+
+void ContextPoll::remove()
+{
+    if (fd != -1) {
+        getCurrentPoller().remove(this);
+        fd = -1;
+    }
 }
 
 void ContextPoll::handleEvents(uint32_t events)
@@ -60,6 +83,15 @@ void ContextPoll::waitWrite()
     writeContext->disable();
     Context::yield();
     writeContext = nullptr;
+}
+
+ContextPoll& ContextPoll::operator = (ContextPoll&& ctx)
+{
+    int newFd = ctx.fd;
+    ctx.remove();
+    add(newFd);
+
+    return *this;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -261,11 +293,6 @@ Dispatcher::getListByDeadline(const Clock::time_point& deadline)
         return d_disabled;
 
     return d_sleeping;
-}
-
-ContextPollPtr Dispatcher::getPoll(int fd)
-{
-    return std::make_shared<ContextPoll>(d_poller, fd);
 }
 
 void Dispatcher::spawn(std::function<void()>&& f)

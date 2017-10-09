@@ -10,8 +10,25 @@
 #include <unistd.h>
 
 
+namespace iocoro {
+
 namespace {
 
+sockaddr_in toSockAddr(const IP4Endpoint& endpoint)
+{
+    sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(endpoint.port);
+    addr.sin_addr.s_addr = htonl(endpoint.addr.value);
+    return addr;
+}
+
+IP4Endpoint toIP4Endpoint(const sockaddr_in& addr)
+{
+    return IP4Endpoint(
+            IP4Address(ntohl(addr.sin_addr.s_addr)),
+            ntohs(addr.sin_port));
+}
 
 int make_socket_non_blocking (int sfd) 
 {
@@ -33,46 +50,6 @@ int make_socket_non_blocking (int sfd)
     }
 
     return 0;
-}
-
-int create_and_bind(short port) 
-{
-    struct sockaddr_in serv_addr;
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(port);
-    serv_addr.sin_addr.s_addr = INADDR_ANY;
-
-    int sfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sfd == -1)
-        return sfd;
-
-    int enable = 1;
-    setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));
-    setsockopt(sfd, SOL_SOCKET, SO_REUSEPORT, &enable, sizeof(int));
-
-    setsockopt(sfd, IPPROTO_TCP, TCP_NODELAY, &enable, sizeof(int));
-    setsockopt(sfd, IPPROTO_TCP, TCP_QUICKACK, &enable, sizeof(int));
-
-    int retval = bind(sfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
-    if (retval != 0) {
-        close(sfd);
-        fprintf(stderr, "Could not bind\n");
-        return -1;
-    }
-
-    return sfd;
-}
-}
-
-namespace iocoro
-{
-
-namespace
-{
-
-ContextPollPtr getContextPoll(int fd)
-{
-    return Context::self()->dispatcher().getPoll(fd);
 }
 
 } // end anonymous namespace
@@ -97,22 +74,20 @@ IP4Address IP4Address::loopback()
 //////////////////////////////////////////////////////////////////////////
 // class Connection 
 //////////////////////////////////////////////////////////////////////////
-Connection::Connection(int fd) : d_handle(fd) 
+Connection::Connection(int fd) 
 {
-    if (fd != -1) {
-        d_poll = Context::self()->dispatcher().getPoll(fd);
-    }
+    attach(fd);
 }
 
-Connection::Connection(Connection&& c) 
+void Connection::attach(int fd)
 {
-    *this = std::move(c);
+    d_handle = FileHandle(fd);
+    d_poll.add(fd);
 }
 
-int Connection::connect(const IP4Address& addr, short port)
+int Connection::connect(const IP4Endpoint& endpoint)
 {
     FileHandle fd;
-    ContextPollPtr poll;
 
     int sfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sfd == -1)
@@ -120,19 +95,16 @@ int Connection::connect(const IP4Address& addr, short port)
     make_socket_non_blocking(sfd);
 
     fd = sfd;
-    poll = getContextPoll(sfd);
+    ContextPoll poll(sfd);
 
-    struct sockaddr_in serv_addr;
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(port);
-    serv_addr.sin_addr.s_addr = htonl(addr.value);
+    sockaddr_in serv_addr = toSockAddr(endpoint);
 
     int r = ::connect(sfd, (sockaddr*)&serv_addr, sizeof(serv_addr));
 
     if (r < 0) {
         if (errno != EINPROGRESS)
             return errno;
-        poll->waitWrite();
+        poll.waitWrite();
     } 
 
     int result;
@@ -147,6 +119,7 @@ int Connection::connect(const IP4Address& addr, short port)
         return result;
     }
 
+    d_remoteAddr = endpoint;
     d_handle = std::move(fd);
     d_poll = std::move(poll);
     return result;
@@ -159,7 +132,7 @@ int Connection::read(char* buf, std::size_t sz)
 
         if (r < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                d_poll->waitRead();
+                d_poll.waitRead();
             } else {
                 return r;
             }
@@ -177,7 +150,7 @@ int Connection::writeAll(const char* buf, std::size_t sz)
 
         if (r < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                d_poll->waitWrite();
+                d_poll.waitWrite();
             } else {
                 return r;
             }
@@ -188,6 +161,11 @@ int Connection::writeAll(const char* buf, std::size_t sz)
                 return r;
         }
     }
+}
+
+void Connection::shutdown()
+{
+    ::shutdown(d_handle, SHUT_RDWR);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -211,19 +189,13 @@ Listener::Listener()
     d_handle = FileHandle(sfd);
 }
 
-int Listener::bind(IP4Address addr, short port)
+int Listener::bind(const IP4Endpoint& endpoint)
 {
-    int sfd = d_handle.handle();
-    struct sockaddr_in serv_addr;
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(port);
-    serv_addr.sin_addr.s_addr = htonl(addr.value);
-
-    int retval = ::bind(sfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
+    auto serv_addr = toSockAddr(endpoint);
+    int retval = ::bind(d_handle, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
     if (retval != 0) {
-        close(sfd);
         fprintf(stderr, "Could not bind\n");
-        return -1;
+        return errno;
     }
 
     return retval;
@@ -233,34 +205,35 @@ int Listener::listen(int backlog)
 {
     int r = ::listen(d_handle.handle(), backlog);
 
-    if (r < 0) {
-        return r;
+    if (r != 0) {
+        return errno;
     }
 
-    d_poll = Context::self()->dispatcher().getPoll(d_handle);
+    d_poll.add(d_handle);
     return r;
 }
 
 bool Listener::accept(Connection& conn)
 {
-    struct sockaddr in_addr;
-    socklen_t in_len = sizeof(in_addr);
+    sockaddr_in inAddr;
+    socklen_t inLen = sizeof(inAddr);
 
     for (;;) {
-        int infd = accept4(d_handle.handle(), &in_addr, &in_len, SOCK_NONBLOCK);
+        int infd = accept4(d_handle.handle(), (sockaddr*)&inAddr, &inLen, SOCK_NONBLOCK);
         if (infd < 0) {
             if (errno != EAGAIN && errno != EWOULDBLOCK) {
                 fprintf(stderr, "accept4 failed: %d\n", errno);
                 return false;
             }
-            d_poll->waitRead();
+            d_poll.waitRead();
         } else {
-            conn = Connection(infd);
+            int enable = 1;
+            setsockopt(infd, IPPROTO_TCP, TCP_NODELAY, &enable, sizeof(int));
+            conn.attach(infd);
+            conn.setRemoteAddress(toIP4Endpoint(inAddr));
             return true;
         }
     }
-
-    return false;
 }
 
 }

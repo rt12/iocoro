@@ -12,8 +12,10 @@ public:
     void client()
     {
         Connection c;
-        int r = c.connect(IP4Address::loopback(), 8099);
+        IP4Endpoint addr(IP4Address::loopback(), 8099);
+        int r = c.connect(addr);
         ASSERT_EQ(0, r);
+        ASSERT_EQ(addr, c.remoteAddress());
         // add a little pause to make sure other coroutine will have to wait for io
         Context::sleep_for(std::chrono::milliseconds(100));
         c.writeAll("hello", 5);
@@ -22,7 +24,7 @@ public:
     void server()
     {
         Listener listener;
-        ASSERT_EQ(0, listener.bind(IP4Address::any(), 8099));
+        ASSERT_EQ(0, listener.bind(IP4Endpoint(IP4Address::any(), 8099)));
         ASSERT_EQ(0, listener.listen(2048));
 
         char buf[100];

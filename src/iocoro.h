@@ -31,22 +31,30 @@ namespace Flags
     const uint32_t Schedule   = 0x200; // scheduled wake
 };
 
-struct ContextPoll: public FilePoll
+class ContextPoll: FilePoll
 {
-    Poller& poller;
     Context* readContext{nullptr};
     Context* writeContext{nullptr};
 
-    ContextPoll(Poller& p, int fd);
-    ~ContextPoll();
-
     virtual void handleEvents(uint32_t events) override;
 
+public:
+    ContextPoll(int fd = -1);
+    ~ContextPoll();
+
+    void add(int fd);
+    void remove();
     void waitRead();
     void waitWrite();
-};
 
-typedef std::shared_ptr<ContextPoll> ContextPollPtr;
+    // move
+    ContextPoll(ContextPoll&& ctx);
+    ContextPoll& operator = (ContextPoll&& ctx);
+
+    // noncopyable
+    ContextPoll(const ContextPoll&) = delete;
+    ContextPoll& operator = (const ContextPoll&) = delete;
+};
 
 class Context: 
     public boost::intrusive::list_base_hook<>
@@ -58,7 +66,6 @@ class Context:
     boost::context::continuation d_coro;
     bool d_finished = false;
     Clock::time_point d_deadline{Clock::time_point::min()};
-    uint32_t d_ioFlags{Flags::None};
     uint32_t d_wakeFlags{Flags::None};
 
     void cc();
@@ -132,8 +139,15 @@ public:
 
     // internal
     void schedule(Context* ctx, const Clock::time_point& deadline);
-    ContextPollPtr getPoll(int fd);
+    ContextPoll getPoll(int fd);
+    Poller& getPoller() { return d_poller; }
 };
+
+inline Poller& getCurrentPoller()
+{
+    return Context::self()->dispatcher().getPoller();
+}
+
 
 }
 

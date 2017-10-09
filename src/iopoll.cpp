@@ -11,7 +11,7 @@ Poller::Poller()
 
 void Poller::add(FilePoll* pd)
 {
-    fprintf(stderr, "Poller: add fd %d\n", pd->fd);
+    // fprintf(stderr, "Poller: add fd %d\n", pd->fd);
     epoll_event ev;
     ev.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET; 
     ev.data.ptr = pd;
@@ -26,7 +26,7 @@ void Poller::add(FilePoll* pd)
 
 void Poller::remove(FilePoll* pd)
 {
-    fprintf(stderr, "Poller: remove fd %d\n", pd->fd);
+    // fprintf(stderr, "Poller: remove fd %d\n", pd->fd);
     epoll_event ev;
     ev.events = 0; 
     ev.data.ptr = pd;
