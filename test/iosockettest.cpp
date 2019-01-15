@@ -19,6 +19,11 @@ public:
         // add a little pause to make sure other coroutine will have to wait for io
         Context::sleep_for(std::chrono::milliseconds(100));
         c.writeAll("hello", 5);
+ 
+        char buf[10];
+        ASSERT_EQ(5, c.read(buf, sizeof(buf)));
+
+        ASSERT_EQ(0, memcmp("world", buf, 5));
     }
 
     void server()
@@ -32,6 +37,8 @@ public:
         ASSERT_TRUE(listener.accept(conn));
         ASSERT_EQ(5, conn.read(buf, 100));
         ASSERT_EQ(0, memcmp("hello", buf, 5));
+
+        ASSERT_EQ(5, conn.writeAll("world", 5));
     }
 };
 

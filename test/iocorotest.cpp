@@ -116,7 +116,7 @@ TEST(Timer, oneTimeout)
         auto start = Clock::now();
         Context::sleep_for(ms50);
         // allow 5ms skew 
-        EXPECT_NEAR(50, elapsed(start), 5);
+        EXPECT_NEAR(50, elapsed(start), 10);
     });
 
     d.dispatch();
@@ -130,16 +130,16 @@ TEST(Timer, severalTimeouts)
 
     d.spawn([&] {
         Context::sleep_for(ms30);
-        EXPECT_NEAR(30, elapsed(start), 5);
+        EXPECT_NEAR(30, elapsed(start), 10);
         Context::sleep_for(ms50);
-        EXPECT_NEAR(80, elapsed(start), 5);
+        EXPECT_NEAR(80, elapsed(start), 10);
     });
 
     d.spawn([&] {
         Context::sleep_for(ms50);
-        EXPECT_NEAR(50, elapsed(start), 5);
+        EXPECT_NEAR(50, elapsed(start), 10);
         Context::sleep_for(ms50);
-        EXPECT_NEAR(100, elapsed(start), 5);
+        EXPECT_NEAR(100, elapsed(start), 10);
     });
 
     d.dispatch();

@@ -181,9 +181,6 @@ Listener::Listener()
     setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));
     setsockopt(sfd, SOL_SOCKET, SO_REUSEPORT, &enable, sizeof(int));
 
-    setsockopt(sfd, IPPROTO_TCP, TCP_NODELAY, &enable, sizeof(int));
-    setsockopt(sfd, IPPROTO_TCP, TCP_QUICKACK, &enable, sizeof(int));
-
     make_socket_non_blocking(sfd);
 
     d_handle = FileHandle(sfd);
@@ -219,7 +216,7 @@ bool Listener::accept(Connection& conn)
     socklen_t inLen = sizeof(inAddr);
 
     for (;;) {
-        int infd = accept4(d_handle.handle(), (sockaddr*)&inAddr, &inLen, SOCK_NONBLOCK);
+        int infd = ::accept(d_handle.handle(), (sockaddr*)&inAddr, &inLen);
         if (infd < 0) {
             if (errno != EAGAIN && errno != EWOULDBLOCK) {
                 fprintf(stderr, "accept4 failed: %d\n", errno);
@@ -227,6 +224,8 @@ bool Listener::accept(Connection& conn)
             }
             d_poll.waitRead();
         } else {
+            make_socket_non_blocking(infd);
+
             int enable = 1;
             setsockopt(infd, IPPROTO_TCP, TCP_NODELAY, &enable, sizeof(int));
             conn.attach(infd);

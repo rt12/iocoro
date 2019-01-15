@@ -23,7 +23,7 @@ struct FilePoll
 class Poller
 {
     FileHandle d_efd;
-    uint32_t d_count;
+    uint32_t d_count{0};
 public:
     Poller();
 

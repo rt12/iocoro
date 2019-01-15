@@ -13,7 +13,9 @@ include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 include_directories(src)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
+set(INSTALL_GTEST OFF)
 
+add_subdirectory(vendor/googletest)
 add_subdirectory(src)
 add_subdirectory(test)
 
