@@ -34,8 +34,8 @@ void Poller::add(FilePoll* pd)
 {
     struct kevent ev[2];
 
-    EV_SET(&ev[0], pd->fd, EVFILT_READ, EV_ADD, 0, 0, pd);
-    EV_SET(&ev[1], pd->fd, EVFILT_WRITE, EV_ADD, 0, 0, pd);
+    EV_SET(&ev[0], pd->fd, EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, pd);
+    EV_SET(&ev[1], pd->fd, EVFILT_WRITE, EV_ADD | EV_CLEAR, 0, 0, pd);
     
     // TODO: handle error
     kevent(d_efd, ev, 2, 0, 0, 0);
@@ -46,7 +46,7 @@ void Poller::add(FilePoll* pd)
 void Poller::remove(FilePoll* pd)
 {
     struct kevent ev;
-    EV_SET(&ev, pd->fd, 0, EV_DELETE, 0, 0, pd);
+    EV_SET(&ev, pd->fd, EVFILT_READ, EV_DELETE, 0, 0, pd);
 
     // TODO: handle error
     kevent(d_efd, &ev, 1, 0, 0, 0);
@@ -67,6 +67,8 @@ int Poller::wait(int timeoutMs)
         auto& kev = ev[i];
 
         uint32_t flags{0};
+
+        // printf("Event[%d]: filter=%d, flags=%d\n", (int)kev.ident, kev.filter, kev.flags);
 
         if (kev.filter == EVFILT_READ) {
             flags |= EventType::Read;

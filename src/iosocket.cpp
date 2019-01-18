@@ -145,7 +145,7 @@ int Connection::read(char* buf, std::size_t sz)
 int Connection::writeAll(const char* buf, std::size_t sz)
 {
     std::size_t szLeft = sz; 
-    for (;;) {
+    while(szLeft != 0) {
         int r = ::write(d_handle, buf, szLeft);
 
         if (r < 0) {
@@ -157,10 +157,10 @@ int Connection::writeAll(const char* buf, std::size_t sz)
         } else {
             buf += r;
             szLeft -= r;
-            if (szLeft == 0)
-                return r;
         }
     }
+
+    return 0;
 }
 
 void Connection::shutdown()

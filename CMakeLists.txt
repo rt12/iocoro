@@ -15,7 +15,10 @@ include_directories(src)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
 set(INSTALL_GTEST OFF)
 
-add_subdirectory(vendor/googletest)
+set(VENDOR_DIR ${iocoro_SOURCE_DIR}/vendor)
+add_subdirectory(${VENDOR_DIR}/googletest)
+
 add_subdirectory(src)
 add_subdirectory(test)
+add_subdirectory(examples)
 
